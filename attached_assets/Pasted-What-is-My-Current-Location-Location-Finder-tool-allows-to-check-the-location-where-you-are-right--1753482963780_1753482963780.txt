@@ -1,0 +1,46 @@
+What is My Current Location?
+Location Finder tool allows to check the location where you are right now. You can track the current location and see GPS coordinates on the Map. Find My Location shows the exact location of your present position. Get the geolocation of your current location with the Where I Am online tool.
+
+How do I Find my Exact Location?
+We are using Geolocation API to retrieve the location of the user. The only thing you need to do is Allow the browser to access your location. On loading this "Find My Location" page » You will see a Location Access Permission dialog appear beside the browser's address bar » Allow to access your location. You will see the current position is shown on Map and location information is displayed.
+
+Current Geolocation
+Initially, the My Location tool will show the location based on your IP address. Once you allow location access to browser, your geolocation will be shown. You will find the current position with latitude & longitude including GPS coordinates in DD (decimal degrees) and DMS (degrees, minutes, seconds) formats. Your Location Now tool provides geolocation info such as: IP address, country, state/region, city/area, street name, postal/zip code, and GPS coordinates.
+
+Geographic Tools
+explore
+Find Latitude & Longitude from Address
+Lat Long checker tool to get latitude and longitude from address. Convert address to latitude & longitude and get GPS coordinates. Find latitude and longitude of place and get geo coordinates on Map. Search latitude and longitude by address and mark exact location on Google Maps using Latitude Longitude Finder.
+
+Get started
+east
+my_location
+Find Address from Latitude & Longitude
+Reverse Geocoding online tool to get address from latitude & longitude. Convert latitude and longitude to address, and show GPS location on Google Maps. Find location from latitude and longitude with GPS coordinates. Address finder to get location (country, state, city, zip code, etc.) from latitude and longitude.
+
+Get started
+east
+travel_explore
+Get Geolocation from IP Address
+IP Geolocation lookup tool helps to get the geographic location of an IP address online. Find the location of the user by using their device IP address. Get the location (country, state, city, zip code, area code, latitude, longitude, ISP, etc.) from IP address and show the exact GPS position on Google Maps.
+
+Get started
+east
+image_search
+Photo Location Finder
+Online tool to view the GPS data and locate your pictures on Google Maps. Get the location of the picture where it was taken from. You can find the geographical position of photos using this EXIF Data viewer. Extract latitude, longitude, and GPS coordinates from the picture and view the photo location on the Map.
+
+Get started
+east
+share_location
+What Is My IP Address
+Find your IP address online using this free IP lookup tool. Get the IP address of your device and check the location of IP address. Locate the IP address and get geolocation (country, region/state, city, zip/postal code, ISP, timezone, etc) from public IP address. Check your public IP address and obtain IPv4 & IPv6 data.
+
+Get started
+east
+location_on
+My Location
+Track your current location and see it on Google Maps. Find the geolocation of your IP address and get the current GPS location. Free Location Finder tool to get the address of current location and view GPS position on Map. Find your location and access GPS data online. Get the exact location to know where you are currently located.
+
+Get started
+east
