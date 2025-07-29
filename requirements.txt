@@ -1,0 +1,6 @@
+# requirements.txt for GeoPoint project
+# Add Python dependencies here, one per line.
+# Example:
+# fastapi
+# uvicorn
+# requests

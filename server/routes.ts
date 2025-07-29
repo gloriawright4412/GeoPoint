@@ -1,8 +1,14 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction, RequestHandler } from "express";
+
+// Custom Request type for routes that use req.user or req.sessionID
+interface RequestWithUser extends Request {
+  user: any;
+  sessionID?: string;
+}
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, isAdmin } from "./replitAuth";
+import { setupAuth, isAuthenticated } from "./replitAuth";
 import {
   deviceRegistrationSchema,
   locationUpdateSchema,
@@ -97,8 +103,9 @@ async function enhancedIpLookup(ip: string): Promise<any> {
 }
 
 // Admin middleware
-const isAdmin: RequestHandler = async (req: any, res, next) => {
-  const user = req.user;
+const isAdmin: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
+  const userReq = req as RequestWithUser;
+  const user = userReq.user;
   if (!user || !user.claims?.isAdmin) {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -110,9 +117,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
 
   // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  app.get('/api/auth/user', isAuthenticated, async (req: Request, res: Response) => {
+    const userReq = req as RequestWithUser;
     try {
-      const userId = req.user.claims.sub;
+      const userId = userReq.user.claims.sub;
       const user = await storage.getUser(userId);
       
       if (user) {
@@ -131,14 +139,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Device registration and tracking
-  app.post('/api/device/register', isAuthenticated, async (req: any, res) => {
+  app.post('/api/device/register', isAuthenticated, async (req: Request, res: Response) => {
+    const userReq = req as RequestWithUser;
     try {
-      const userId = req.user.claims.sub;
+      const userId = userReq.user.claims.sub;
       const deviceData = deviceRegistrationSchema.parse(req.body);
       const clientIP = await getClientIP(req);
       
-      // Generate or use provided device fingerprint
-      const fingerprint = deviceData.deviceFingerprint || generateDeviceFingerprint(req, deviceData);
+      // Generate or use provided device fingerprint (ensure string)
+      const fingerprint: string = typeof deviceData.deviceFingerprint === 'string' && deviceData.deviceFingerprint.length > 0
+        ? deviceData.deviceFingerprint
+        : generateDeviceFingerprint(req, deviceData);
       
       // Provide safe defaults for all required fields
       const sanitizedDeviceData = {
@@ -179,19 +190,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Real-time location tracking
-  app.post('/api/location/track', isAuthenticated, async (req: any, res) => {
+  app.post('/api/location/track', isAuthenticated, async (req: Request, res: Response) => {
+    const userReq = req as RequestWithUser;
     try {
-      const userId = req.user.claims.sub;
+      const userId = userReq.user.claims.sub;
       const locationData = locationUpdateSchema.parse(req.body);
+      const privacy: any = req.body.privacy || {};
       const clientIP = await getClientIP(req);
-      
+
       // Get or create device for this session
-      const deviceFingerprint = req.headers['device-fingerprint'] || generateDeviceFingerprint(req, {
-        userAgent: req.headers['user-agent'],
-        screenResolution: req.headers['screen-resolution'],
-        timezone: req.headers['timezone'],
-        language: req.headers['accept-language'],
-      });
+      let deviceFingerprint: string = '';
+      if (typeof req.headers['device-fingerprint'] === 'string' && req.headers['device-fingerprint'].length > 0) {
+        deviceFingerprint = req.headers['device-fingerprint'];
+      } else {
+        deviceFingerprint = generateDeviceFingerprint(req, {
+          userAgent: req.headers['user-agent'],
+          screenResolution: req.headers['screen-resolution'],
+          timezone: req.headers['timezone'],
+          language: req.headers['accept-language'],
+        });
+      }
 
       let device = await storage.getDeviceByFingerprint(deviceFingerprint);
       if (!device) {
@@ -245,7 +263,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const locationRecord = await storage.createLocationRecord({
         userId,
         deviceId: device.id,
-        sessionId: req.sessionID,
+        sessionId: userReq.sessionID,
         latitude: locationData.latitude.toString(),
         longitude: locationData.longitude.toString(),
         accuracy: locationData.accuracy?.toString(),
@@ -258,27 +276,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timezone: ipData?.timezone,
         trackingMethod: locationData.trackingMethod || 'gps',
         ...addressData,
+        privacyOptions: privacy,
       });
 
       // Broadcast to WebSocket clients (if connected)
       broadcastLocationUpdate(locationRecord);
 
+      // Expose confidence, accuracy, and sources in response
       res.json({
         success: true,
         location: locationRecord,
         device,
         ipInfo: ipData,
+        confidence: locationData.triangulationConfidence,
+        sourcesUsed: locationData.sourcesUsed,
+        privacy,
       });
     } catch (error) {
       console.error('Location tracking error:', error);
       res.status(500).json({ error: 'Failed to track location' });
     }
   });
+  // User feedback endpoint
+  app.post('/api/location/feedback', isAuthenticated, async (req: Request, res: Response) => {
+    const userReq = req as RequestWithUser;
+    try {
+      const userId = userReq.user.claims.sub;
+      const { reportedLat, reportedLon, context } = req.body;
+      // Log or store feedback for future analysis
+      // For now, just log
+      console.log('User feedback received:', { userId, reportedLat, reportedLon, context });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to submit feedback' });
+    }
+  });
 
   // Get user's devices
-  app.get('/api/user/devices', isAuthenticated, async (req: any, res) => {
+  app.get('/api/user/devices', isAuthenticated, async (req: Request, res: Response) => {
+    const userReq = req as RequestWithUser;
     try {
-      const userId = req.user.claims.sub;
+      const userId = userReq.user.claims.sub;
       const devices = await storage.getUserDevices(userId);
       res.json(devices);
     } catch (error) {
@@ -288,9 +326,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get user's location history
-  app.get('/api/user/locations', isAuthenticated, async (req: any, res) => {
+  app.get('/api/user/locations', isAuthenticated, async (req: Request, res: Response) => {
+    const userReq = req as RequestWithUser;
     try {
-      const userId = req.user.claims.sub;
+      const userId = userReq.user.claims.sub;
       const limit = parseInt(req.query.limit as string) || 100;
       const locations = await storage.getUserLocationHistory(userId, limit);
       res.json(locations);
@@ -301,9 +340,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // User stats
-  app.get('/api/user/stats', isAuthenticated, async (req: any, res) => {
+  app.get('/api/user/stats', isAuthenticated, async (req: Request, res: Response) => {
+    const userReq = req as RequestWithUser;
     try {
-      const userId = req.user.claims.sub;
+      const userId = userReq.user.claims.sub;
       const stats = await storage.getUserStats(userId);
       res.json(stats);
     } catch (error) {
@@ -313,7 +353,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Public IP lookup (for anonymous users)
-  app.post('/api/ip-lookup', async (req, res) => {
+  app.post('/api/ip-lookup', async (req: Request, res: Response) => {
     try {
       const { ip } = req.body;
       const targetIp = ip || await getClientIP(req);
@@ -353,7 +393,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin routes (protected)
-  app.get('/api/admin/stats', isAuthenticated, isAdmin, async (req, res) => {
+  app.get('/api/admin/stats', isAuthenticated, isAdmin, async (req: Request, res: Response) => {
+    // No user access needed here, but keep for consistency
     try {
       const stats = await storage.getSystemStats();
       res.json(stats);
@@ -363,7 +404,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/admin/users', isAuthenticated, isAdmin, async (req, res) => {
+  app.get('/api/admin/users', isAuthenticated, isAdmin, async (req: Request, res: Response) => {
+    // No user access needed here, but keep for consistency
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = parseInt(req.query.offset as string) || 0;
@@ -375,7 +417,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/admin/devices', isAuthenticated, isAdmin, async (req, res) => {
+  app.get('/api/admin/devices', isAuthenticated, isAdmin, async (req: Request, res: Response) => {
+    // No user access needed here, but keep for consistency
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = parseInt(req.query.offset as string) || 0;
@@ -387,7 +430,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/admin/locations/realtime', isAuthenticated, isAdmin, async (req, res) => {
+  app.get('/api/admin/locations/realtime', isAuthenticated, isAdmin, async (req: Request, res: Response) => {
+    // No user access needed here, but keep for consistency
     try {
       const locations = await storage.getRealtimeLocations();
       res.json(locations);
@@ -397,7 +441,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/search', isAuthenticated, isAdmin, async (req, res) => {
+  app.post('/api/admin/search', isAuthenticated, isAdmin, async (req: Request, res: Response) => {
+    // No user access needed here, but keep for consistency
     try {
       const searchParams = adminSearchSchema.parse(req.body);
       let results: any = {};
@@ -422,7 +467,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Legacy geocoding endpoints (for backward compatibility)
-  app.post("/api/geocode", async (req, res) => {
+  app.post("/api/geocode", async (req: Request, res: Response) => {
     try {
       const { address } = req.body;
       const encodedAddress = encodeURIComponent(address);
@@ -462,7 +507,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/reverse-geocode", async (req, res) => {
+  app.post("/api/reverse-geocode", async (req: Request, res: Response) => {
     try {
       const { latitude, longitude } = req.body;
       const response = await fetch(
@@ -500,10 +545,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // WebSocket setup for real-time updates
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   
-  wss.on('connection', (ws: WebSocket, req) => {
+  wss.on('connection', (ws: WebSocket, req: Request) => {
     console.log('WebSocket client connected');
     
-    ws.on('message', (message) => {
+    ws.on('message', (message: any) => {
       try {
         const data = JSON.parse(message.toString());
         // Handle WebSocket messages (future implementation)
@@ -525,7 +570,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       data: locationData,
     });
 
-    wss.clients.forEach((client) => {
+    wss.clients.forEach((client: any) => {
       if (client.readyState === WebSocket.OPEN) {
         client.send(message);
       }
